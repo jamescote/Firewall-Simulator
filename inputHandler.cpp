@@ -305,14 +305,6 @@ int input_Handler::breakdownIP( string sIP, unsigned int& iRetIP, unsigned int& 
 			sIP.assign( sIPSplit.back() );
 			sIPSplit.pop_back();
 			splitString( sIP, '/', sIPSplit );
-		#ifdef DEBUG
-			cout << "Split IP_ADDRESS:\n";
-			for ( vector< string >::iterator iter = sIPSplit.begin();
-				 iter != sIPSplit.end();
-				 ++iter )
-				cout << "\t" << (*iter) << endl;
-
-		#endif
 
 			// Create IP Address Value
 			for ( int i = 0; i < IP_BYTES; ++i )
@@ -328,29 +320,31 @@ int input_Handler::breakdownIP( string sIP, unsigned int& iRetIP, unsigned int& 
 			}
 
 			// Set Bit Mask
-			if ( sIPSplit.size() == (IP_BYTES + 1) )
+			if ( sIPSplit.size() == (IP_BYTES + 1) )	// If a bit mask was specified.
 			{
 				try
-				{
+				{	// Shift IP Mask that has all bits set over by the inverse of the CIDR value (32 - x)
 					iRetIPMask = iRetIPMask << (NUM_BITS_IN_INT - stoi( sIPSplit[ IP_BYTES ] ));
 				}
 				catch ( const exception& e )
 				{ return 0; }
 			}
-
 		}
-			
 	}
 	
+	// Return result
 	return iReturnVal;
 }
 
+// Handles ruleset input for ports. Each port is split by a single comma, so seperate string by comma then evaluate each
+//		resulting string as a possible port entry.
 int input_Handler::breakdownPorts( string sPorts, vector< unsigned short >& vshRetPorts )
 {
 	// Local Variables
 	vector< string > sPortsList;
 	unsigned int iNewPort;
 
+	// * = any port valid
 	if ( sPorts.compare( "*" ) )
 	{
 		// Split ports by comma
@@ -376,6 +370,7 @@ int input_Handler::breakdownPorts( string sPorts, vector< unsigned short >& vshR
 	return 1;
 }
 
+// converts a string into its corresponding eAction enum. 
 int input_Handler::handleAction( string sAction, eAction& eRetAction )
 {
 	// Local Variables
@@ -396,7 +391,7 @@ int input_Handler::handleAction( string sAction, eAction& eRetAction )
 	if ( MAX_ACTIONS == eRetAction )
 		iReturnVal = 0;
 
-	// Return Result.*/
+	// Return Result.
 	return iReturnVal;
 }
 
@@ -413,6 +408,6 @@ int input_Handler::handleDirection( string sDirection, bool& bRetDirection )
 	if ( !bRetDirection && sDirection.compare( OUT ) )
 		iReturnVal = 0;
 
-	// Return result */
+	// Return result
 	return iReturnVal;
 }

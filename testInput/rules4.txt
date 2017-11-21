@@ -1,1 +1,0 @@
-in	accept	206.218.20.218/9	37689,5959,25976	established	#Give me something good to eat!
