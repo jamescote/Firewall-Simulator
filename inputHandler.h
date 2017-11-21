@@ -2,7 +2,7 @@
 #define INPUT_HANDLER
 
 // Includes
-#include <string.h>
+#include <string>
 #include <cstdlib>
 #include <vector>
 #include <iostream>

@@ -9,7 +9,7 @@
 #include <fstream>
 #include <limits>
 
-/**
+//**
 #define DEBUG
 //*/
 // Define
@@ -85,11 +85,20 @@ void input_Handler::splitString( string& sInput, char delim, vector<string>& sOu
 void input_Handler::purgeWhitespace( string& sInput )
 {
 	// Local Variables
-	size_t iFoundPos, iLastPos;
+	size_t iFoundPos;
+	string sWhitespaces( " \n\v\f\r\t" );
 
 	if ( sInput.empty() )
 		return;
 
+	sInput.pop_back();
+	while ( isspace( sInput.back() ) )
+		sInput.pop_back();
+	
+	iFoundPos = sInput.find_first_not_of( sWhitespaces );
+	if( iFoundPos != string::npos )
+		sInput = sInput.substr( iFoundPos );
+	
 	while ( string::npos != (iFoundPos = sInput.find_first_of( '\t' )) )
 		sInput[ iFoundPos ] = ' ';
 	while ( string::npos != (iFoundPos = sInput.find_first_of( '\f' )) )
@@ -98,13 +107,6 @@ void input_Handler::purgeWhitespace( string& sInput )
 		sInput[ iFoundPos ] = ' ';
 	while ( string::npos != (iFoundPos = sInput.find_first_of( '\r' )) )
 		sInput[ iFoundPos ] = ' '; 
-
-	// Clear leading and trailing whitespace.
-	iFoundPos = sInput.find_first_not_of( ' ' );
-	iLastPos = sInput.find_last_not_of( ' ' );
-
-	cout << "iFoundPos = " << iFoundPos << "; iLastPos = " << iLastPos << endl;
-	sInput = sInput.substr( iFoundPos, iLastPos - iFoundPos - 1 );
 }
 
 int input_Handler::loadRuleSet( string sFileName )
