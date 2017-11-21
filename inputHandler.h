@@ -8,13 +8,13 @@
 #include <iostream>
 #include <sstream>
 #include <iterator>
+#include <algorithm>
 
 // Namespaces
 using namespace std;
 
 // Class: input_Handler
-// Desc: Stores connection information such as Nonce, IV, Secret and Session Key and commands.
-//			Handles encryption and decryption, socket IO, HMAC generation and message handling between server and client.
+// Desc: Handles ruleset construction and management. Handles incoming packets and evaluates them against established ruleset.
 // Written by: James Cote
 // ID: 10146559
 // Tutorial: T01
@@ -54,6 +54,7 @@ private:
 
 	struct stRule
 	{
+		// Member variables
 		int m_iRuleNumber;
 		bool m_bIncoming;
 		eAction m_eAction;
@@ -63,54 +64,16 @@ private:
 		vector< unsigned short > m_shPorts;
 		bool m_bEstablished;
 
-		// Format Rule into string for debug.
-		string toString()
+		// Checks if an incoming packet matches this rule.
+		bool isMatch( const stRule& stPacket )
 		{
-			string sReturn = "Line: ";
-			string sIPAddress = "*";
-			unsigned int iWorkingIP = m_iIP;
-			unsigned char iMaskCount = 0;
-			sReturn += to_string( m_iRuleNumber );
-			sReturn += " ";
-			sReturn += (m_bIncoming ? "in " : "out ");
-
-			if ( !m_bAnyIP )
-			{
-				sIPAddress.clear();
-
-				for ( int i = 24; i >= 0; i -= 8 )
-				{
-					iWorkingIP = m_iIP >> i;
-					sIPAddress += to_string( iWorkingIP & 255 ) + ".";
-				}
-				sIPAddress.pop_back();
-				sIPAddress.push_back( '/' );
-
-				iWorkingIP = m_iIPMask;
-				while ( iWorkingIP )
-				{
-					iMaskCount += iWorkingIP & 1;
-					iWorkingIP = iWorkingIP >> 1;
-				}
-				sIPAddress += to_string( iMaskCount );
-			}
-			sReturn += sIPAddress + " ";
-
-			if ( m_shPorts.empty() )
-				sReturn += "* ";
-			else
-			{
-				for ( vector< unsigned short >::iterator iter = m_shPorts.begin();
-				iter != m_shPorts.end();
-				++iter )
-					sReturn += to_string( (*iter) ) + ",";
-
-				sReturn.pop_back();
-			}
-
-			sReturn += (m_bEstablished ? " 1" : " 0");
-
-			return sReturn;
+			bool bResult = stPacket.m_bIncoming == this->m_bIncoming;	// Check if rule handles incoming or outgoing.
+			bResult = bResult && (!this->m_iIP || ((this->m_iIP & this->m_iIPMask) == (stPacket.m_iIP & this->m_iIPMask)));	// Check IP
+			bResult = bResult && (!this->m_bEstablished || stPacket.m_bEstablished);	// Check if packet needs to have been established or not.
+			bResult = bResult &&	// Check that incoming packet is on a port used by this rule.
+						(this->m_shPorts.empty() || 
+						(find( this->m_shPorts.begin(), this->m_shPorts.end(), stPacket.m_shPorts[ 0 ] ) != this->m_shPorts.end()));
+			return bResult;
 		}
 	};
 	vector< stRule > m_stRuleSet;

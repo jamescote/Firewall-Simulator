@@ -9,9 +9,6 @@
 #include <fstream>
 #include <limits>
 
-/**
-#define DEBUG
-//*/
 // Define
 #define BUFFER_SIZE 256
 #define MIN_ARG_COUNT 4
@@ -20,7 +17,10 @@
 #define DIRECTION 0
 #define ACTION 1
 #define IP 2
+#define PACKET_IP 1
 #define PORTS 3
+#define PACKET_PORT 2
+#define PACKET_FLAG 3
 #define FLAG 4
 #define SUCCESS 1
 #define FAIL 0
@@ -82,22 +82,28 @@ void input_Handler::splitString( string& sInput, char delim, vector<string>& sOu
 			sOutput.push_back( sElement );
 }
 
+// Purges input of any leading and trailing whitespace.
+// Also replaces any \n \v \f \r or \t with a space instead for splitting the string.
 void input_Handler::purgeWhitespace( string& sInput )
 {
 	// Local Variables
 	size_t iFoundPos;
 	string sWhitespaces( " \n\v\f\r\t" );
 
+	// Clear any trailing whitespace
 	while ( !sInput.empty() && (0 == sInput.back() || isspace( sInput.back() )) )
 		sInput.pop_back();
-
+	
+	// exit if input is empty.
 	if ( sInput.empty() )
 		return;
 	
+	// Clear leading whitespace.
 	iFoundPos = sInput.find_first_not_of( sWhitespaces );
 	if( iFoundPos != string::npos )
 		sInput = sInput.substr( iFoundPos );
 	
+	// Replace any unwanted whitespace characters with spaces.
 	while ( string::npos != (iFoundPos = sInput.find_first_of( '\t' )) )
 		sInput[ iFoundPos ] = ' ';
 	while ( string::npos != (iFoundPos = sInput.find_first_of( '\f' )) )
@@ -108,25 +114,29 @@ void input_Handler::purgeWhitespace( string& sInput )
 		sInput[ iFoundPos ] = ' '; 
 }
 
+// Given a file name, open the file and build a ruleset from that file.
 int input_Handler::loadRuleSet( string sFileName )
 {
 	// Local Variables
 	ifstream pRuleFile( sFileName );
-	int iReturnVal, iLineCount = 1;
+	int iReturnVal = 1, iLineCount = 1;
 	string sCommandLine;
 	char sBuffer[ BUFFER_SIZE ] = { 0 };
-	vector< string > sTestingStrings;
 
+	// File opened?
 	if ( pRuleFile.is_open() )
 	{
+		// Read until end of file
 		while ( !pRuleFile.eof() )
 		{
+			// Read new line.
 			pRuleFile.getline( sBuffer, BUFFER_SIZE - 1 );
 			sCommandLine.assign( sBuffer, pRuleFile.gcount() );
 
 			// Check input
 			if ( (pRuleFile.fail() ^ pRuleFile.bad()) && pRuleFile.gcount() > 0 )	// Line too long
 			{
+				// Output warning then read rest of the line.
 				cout << "Warning: Buffer Overflow: (line  " << iLineCount << "): \"" << sCommandLine;
 				while ( pRuleFile.fail() )
 				{
@@ -144,33 +154,84 @@ int input_Handler::loadRuleSet( string sFileName )
 			// Increment Line Count.
 			++iLineCount;
 		}
+
+		// Close the file afterwards
+		pRuleFile.close();
 	}
-	else
+	else	// Failed to open file.
 	{
 		iReturnVal = ERROR_VAL;
 		cout << "Error\n";
 	}
 
-	for ( vector< stRule >::iterator iter = m_stRuleSet.begin();
-		 iter != m_stRuleSet.end();
-		 ++iter )
-		cout << iter->toString() << " :> " << sActionStrings[ iter->m_eAction] << endl;
-
-	pRuleFile.close();
-
-	return iReturnVal;//*/
-
-	return 1;
+	// Return result.
+	return iReturnVal;
 }
 
+// Compares incoming packet against established ruleset. Returns a standard result to be output by caller.
 void input_Handler::handlePacket( string sInput, string& sOutput )
 {
+	// Local Variables
+	vector< string > sPacketParts;
+	vector< stRule >::iterator Rule_Iter;
+	stRule sPacket;
+	bool bValidInput = false;
 
+	// Split Input
+	splitString( sInput, ' ', sPacketParts );
+
+	if ( sPacketParts.size() == MIN_ARG_COUNT )
+	{
+		// Handle Packet - Generate a Packet as a Firewall Rule for comparison
+		bValidInput = handleDirection( sPacketParts[ DIRECTION ], sPacket.m_bIncoming );
+		bValidInput = bValidInput && breakdownIP( sPacketParts[ PACKET_IP ], sPacket.m_iIP, sPacket.m_iIPMask, sPacket.m_bAnyIP );
+		bValidInput = bValidInput && breakdownPorts( sPacketParts[ PACKET_PORT ], sPacket.m_shPorts );
+		if ( !sPacketParts[ PACKET_FLAG ].compare( "1" ) )
+			sPacket.m_bEstablished = true;
+		else if ( !sPacketParts[ PACKET_FLAG ].compare( "0" ) )
+			sPacket.m_bEstablished = false;
+
+		// Won't accept a null IP or no port specified.
+		bValidInput = bValidInput && !sPacket.m_shPorts.empty() && sPacket.m_iIP;
+
+		// Match packet with rule
+		if ( bValidInput )
+		{
+			// Find rule
+			for ( Rule_Iter = m_stRuleSet.begin();
+				  Rule_Iter != m_stRuleSet.end();
+				  ++Rule_Iter )
+			{
+				if ( Rule_Iter->isMatch( sPacket ) )
+					break; // Found rule
+			}
+
+			// Default is Drop
+			if ( Rule_Iter == m_stRuleSet.end() )
+			{
+				sOutput.assign( sActionStrings[ DROP_ACT ] );
+				sOutput += "() ";
+			}
+			else	// Otherwise, append action and rule number.
+			{
+				sOutput.assign( sActionStrings[ Rule_Iter->m_eAction ] );
+				sOutput += "(" + to_string( Rule_Iter->m_iRuleNumber ) + ") ";
+			}
+
+			// Finally, Append on the packet that this rule applies to.
+			sOutput += sInput;
+		}
+	}
+	
+	// Default input error handling
+	if ( !bValidInput )
+		sOutput = "Bad Packet input: " + sInput;
 }
 
 /************************************************************************************\
 * RuleSet Input Handlers															*
 \************************************************************************************/
+// Handles line of input from ruleset. Deals with bad input and generates a rule from good input.
 int input_Handler::handleRuleSetLine( string& sLine, int iLineNum )
 {
 	// Local Variables
@@ -179,70 +240,41 @@ int input_Handler::handleRuleSetLine( string& sLine, int iLineNum )
 	vector< string > sBreakdown;
 	stRule sNewRule;
 
+	// Clean any comments from the line.
 	if ( string::npos != st_CommentLoc )
 		sLine.erase( st_CommentLoc );
 
+	// Split line into individual parts
 	splitString( sLine, ' ', sBreakdown );
 
+	// Not enough parameters => erroneous input.
 	if ( sBreakdown.size() < MIN_ARG_COUNT )
 		iReturnValue = ERROR_VAL;
 	else
-	{
-	#ifdef DEBUG
-		cout << "Entered handleRuleSetLine; split: [";
-		for ( vector< string >::iterator iter = sBreakdown.begin();
-			  iter != sBreakdown.end();
-			  ++iter )
-			cout << (*iter) << (iter + 1 == sBreakdown.end() ? "]\n" : "|");
-	#endif // DEBUG
-		if ( COMMENT_FLAG != sBreakdown[ 0 ][ 0 ] )
+	{	
+		// Parse each piece of the rule individually to generate rule.
+		iReturnValue = iReturnValue && handleDirection( sBreakdown[ DIRECTION ], sNewRule.m_bIncoming );
+		iReturnValue = iReturnValue && handleAction( sBreakdown[ ACTION ], sNewRule.m_eAction );
+		iReturnValue = iReturnValue && breakdownIP( sBreakdown[ IP ], sNewRule.m_iIP, sNewRule.m_iIPMask, sNewRule.m_bAnyIP );
+		iReturnValue = iReturnValue && breakdownPorts( sBreakdown[ PORTS ], sNewRule.m_shPorts );
+		if ( sBreakdown.size() > FLAG )
+			sNewRule.m_bEstablished = !sBreakdown[ FLAG ].compare( sEstablishedValue );
+		else
+			sNewRule.m_bEstablished = false;
+
+		// If ruleset was generated without issue => store rule.
+		if ( SUCCESS == iReturnValue )
 		{
-			iReturnValue = iReturnValue && handleDirection( sBreakdown[ DIRECTION ], sNewRule.m_bIncoming );
-		#ifdef DEBUG
-			cout << "Finished handleDirection: input: \"" << sBreakdown[ DIRECTION ] << "\" sNewRule.m_bIncoming: <"
-				<< (sNewRule.m_bIncoming ? "in" : "out") << "> returned: " << (iReturnValue ? "<1>" : "<0>") << endl;
-		#endif
-			iReturnValue = iReturnValue && handleAction( sBreakdown[ ACTION ], sNewRule.m_eAction );
-		#ifdef DEBUG
-			cout << "Finished handleAction: input: \"" << sBreakdown[ ACTION ] << "\" sNewRule.m_eAction: <"
-				<< (sNewRule.m_eAction == MAX_ACTIONS ? "NULL" : sActionStrings[ sNewRule.m_eAction ] ) << "> returned: " << (iReturnValue ? "<1>" : "<0>") << endl;
-		#endif
-			iReturnValue = iReturnValue && breakdownIP( sBreakdown[ IP ], sNewRule.m_iIP, sNewRule.m_iIPMask, sNewRule.m_bAnyIP );
-		#ifdef DEBUG
-			cout << "Finished breakdownIP: input: \"" << sBreakdown[ IP ] << "\" sNewRule.m_iIP: <"
-				<< sNewRule.m_iIP << "> sNewRule.m_iIPMask: <" << sNewRule.m_iIPMask << "> sNewRule.m_bAnyIP: <" << (sNewRule.m_bAnyIP ? "true" : "false") << "> returned: " << (iReturnValue ? "<1>" : "<0>") << endl;
-		#endif
-			iReturnValue = iReturnValue && breakdownPorts( sBreakdown[ PORTS ], sNewRule.m_shPorts );
-		#ifdef DEBUG
-			cout << "Finished breakdownPorts: input: \"" << sBreakdown[ PORTS ] << "\" sNewRule.m_shPorts: <";
-			for ( vector< unsigned short >::iterator iter = sNewRule.m_shPorts.begin();
-				 iter != sNewRule.m_shPorts.end();
-				 ++iter )
-				cout << (*iter) << (iter + 1 == sNewRule.m_shPorts.end() ? "" : ",");
-			cout << "> returned: " << (iReturnValue ? "<1>" : "<0>") << endl;
-
-			cout << "Breakdown Size: " << sBreakdown.size() << " vs. Flag: " << FLAG << "\n";
-		#endif
-			if ( sBreakdown.size() > FLAG )
-			{
-				sNewRule.m_bEstablished = !sBreakdown[ FLAG ].compare( sEstablishedValue );
-			#ifdef DEBUG
-				cout << "\tRead: " << (sNewRule.m_bEstablished ? "established" : sBreakdown[ FLAG ]) << endl;
-			#endif
-			}
-			else
-				sNewRule.m_bEstablished = false;
-
-			if ( SUCCESS == iReturnValue )
-			{
-				sNewRule.m_iRuleNumber = iLineNum;
-				m_stRuleSet.push_back( sNewRule );
-			}
+			sNewRule.m_iRuleNumber = iLineNum;
+			m_stRuleSet.push_back( sNewRule );
 		}
 	}
+	// Report result.
 	return iReturnValue;
 }
 
+// Breaksdown the IP into an unsigned int for the IP itself and an unsigned int for the mask that specifies the important bits of the IP
+//		As per CIDR specifications.
 int input_Handler::breakdownIP( string sIP, unsigned int& iRetIP, unsigned int& iRetIPMask, bool& bRetAnyIP )
 {
 	// Local Variables
