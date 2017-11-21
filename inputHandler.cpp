@@ -9,7 +9,7 @@
 #include <fstream>
 #include <limits>
 
-//**
+/**
 #define DEBUG
 //*/
 // Define
@@ -88,11 +88,11 @@ void input_Handler::purgeWhitespace( string& sInput )
 	size_t iFoundPos;
 	string sWhitespaces( " \n\v\f\r\t" );
 
+	while ( !sInput.empty() && (0 == sInput.back() || isspace( sInput.back() )) )
+		sInput.pop_back();
+
 	if ( sInput.empty() )
 		return;
-
-	while ( NULL == sInput.back() || isspace( sInput.back() ) )
-		sInput.pop_back();
 	
 	iFoundPos = sInput.find_first_not_of( sWhitespaces );
 	if( iFoundPos != string::npos )
@@ -154,7 +154,7 @@ int input_Handler::loadRuleSet( string sFileName )
 	for ( vector< stRule >::iterator iter = m_stRuleSet.begin();
 		 iter != m_stRuleSet.end();
 		 ++iter )
-		cout << iter->toString() << endl;
+		cout << iter->toString() << " :> " << sActionStrings[ iter->m_eAction] << endl;
 
 	pRuleFile.close();
 
@@ -175,8 +175,12 @@ int input_Handler::handleRuleSetLine( string& sLine, int iLineNum )
 {
 	// Local Variables
 	int iReturnValue = 1;
+	size_t st_CommentLoc = sLine.find_first_of( COMMENT_FLAG );
 	vector< string > sBreakdown;
 	stRule sNewRule;
+
+	if ( string::npos != st_CommentLoc )
+		sLine.erase( st_CommentLoc );
 
 	splitString( sLine, ' ', sBreakdown );
 
@@ -226,6 +230,8 @@ int input_Handler::handleRuleSetLine( string& sLine, int iLineNum )
 				cout << "\tRead: " << (sNewRule.m_bEstablished ? "established" : sBreakdown[ FLAG ]) << endl;
 			#endif
 			}
+			else
+				sNewRule.m_bEstablished = false;
 
 			if ( SUCCESS == iReturnValue )
 			{
@@ -265,16 +271,25 @@ int input_Handler::breakdownIP( string sIP, unsigned int& iRetIP, unsigned int& 
 		{
 			// Check for CIDR ending.
 			sIP.assign( sIPSplit.back() );
+			sIPSplit.pop_back();
 			splitString( sIP, '/', sIPSplit );
+		#ifdef DEBUG
+			cout << "Split IP_ADDRESS:\n";
+			for ( vector< string >::iterator iter = sIPSplit.begin();
+				 iter != sIPSplit.end();
+				 ++iter )
+				cout << "\t" << (*iter) << endl;
+
+		#endif
 
 			// Create IP Address Value
 			for ( int i = 0; i < IP_BYTES; ++i )
 			{
 				try
 				{
+					iRetIP = iRetIP << BYTE_LENGTH;
 					iIPByte = stoi( sIPSplit[ i ] );
 					iRetIP |= iIPByte;
-					iRetIP = iRetIP << BYTE_LENGTH;
 				}
 				catch ( const exception& e )
 				{ return 0; }
@@ -285,7 +300,7 @@ int input_Handler::breakdownIP( string sIP, unsigned int& iRetIP, unsigned int& 
 			{
 				try
 				{
-					iRetIPMask = iRetIPMask << (NUM_BITS_IN_INT - stoi( sIPSplit[ IP_BYTES + 1 ] ));
+					iRetIPMask = iRetIPMask << (NUM_BITS_IN_INT - stoi( sIPSplit[ IP_BYTES ] ));
 				}
 				catch ( const exception& e )
 				{ return 0; }
