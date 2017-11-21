@@ -91,8 +91,7 @@ void input_Handler::purgeWhitespace( string& sInput )
 	if ( sInput.empty() )
 		return;
 
-	sInput.pop_back();
-	while ( isspace( sInput.back() ) )
+	while ( NULL == sInput.back() || isspace( sInput.back() ) )
 		sInput.pop_back();
 	
 	iFoundPos = sInput.find_first_not_of( sWhitespaces );
